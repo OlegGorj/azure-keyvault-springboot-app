@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onbaording-api
+spec:
+  selector:
+      matchLabels:
+        app: onbaording-api
+  replicas: 1
+  template:
+      metadata:
+        labels:
+            app: onbaording-api
+      spec:
+
+        serviceAccountName: api-server
+        containers:
+        - name: onbaording-api
+          image: eengccoelabacrcac1.azurecr.io/onboarding-api:31
+          env:
+             - name: apiVersion
+               value: v1alpha1
+             - name: operatorApiVersion
+               value: ccoe.rbc.com/v1alpha1
+             - name:  operatorGroup
+               value: ccoe.rbc.com
+             - name: operatorNamespace
+               value: rbc-system
+             - name: onBoardPlural
+               value: onboards
+             - name: dburl
+               value: jdbc:sqlserver://database.windows.net:1433;databaseName=api-server
+             - name: dbusername
+               valueFrom:
+                 secretKeyRef:
+                   key: username
+                   name: db-secrets
+             - name: dbpassword
+               valueFrom:
+                 secretKeyRef:
+                   key: password
+                   name: db-secrets
+             - name: apiUsername
+               value: test
+             - name: apiPassword
+               value: testpassword
+             - name: serverPort
+               value: "8080"
+             - name: https.proxyUser
+               valueFrom:
+                secretKeyRef:
+                  key: proxy_user
+                  name: proxy-secret
+             - name: https.proxyPassword
+               valueFrom:
+                secretKeyRef:
+                  key: proxy_password
+                  name: proxy-secret
+             - name: http.proxyHost
+               value: proxy
+             - name: http.proxyPort
+               value: "8080"
+             - name: https.proxyHost
+               value: host
+             - name: https.proxyPort
+               value: "8080"
+             - name: http.nonProxyHosts
+               value: "*.lab01.database.windows.net"
+             - name: clientId
+               value: a5ff55a2-2719-476f-88bb-378cb0a1311f
+             - name: clientSecret
+               value: <SP_SECRET>
+          imagePullPolicy: Always
+          readinessProbe:
+            httpGet:
+              port: 8080
+              path: /actuator/health
+            periodSeconds: 30
+          livenessProbe:
+            httpGet:
+              port: 8080
+              path: /actuator/health
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "4096Mi"
+              cpu: "1"
+            limits:
+              memory: "4096Mi"
+              cpu: "1"
+          ports:
+          - containerPort: 8080
+
+ ---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: onbaording-api
+  annotations:
+   service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+spec:
+  selector:
+    app: onbaording-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  type: LoadBalancer
