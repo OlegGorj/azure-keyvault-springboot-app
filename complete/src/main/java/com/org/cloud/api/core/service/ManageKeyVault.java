@@ -5,10 +5,12 @@ import com.microsoft.azure.management.Azure;
 import com.microsoft.azure.management.keyvault.KeyPermissions;
 import com.microsoft.azure.management.keyvault.SecretPermissions;
 import com.microsoft.azure.management.keyvault.Vault;
+import com.microsoft.azure.management.keyvault.AccessPolicy;
 import com.microsoft.azure.management.resources.fluentcore.arm.Region;
 import com.microsoft.azure.management.resources.fluentcore.utils.SdkContext;
 import com.microsoft.rest.LogLevel;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Joiner;
 
 import org.json.*;
 import java.io.File;
@@ -25,7 +27,6 @@ public final class ManageKeyVault {
   }
 
   // List key vaults
-
   public static String listKeyVaults() {
     String ret = "";
       try {
@@ -54,7 +55,21 @@ public final class ManageKeyVault {
               for (Vault vault : azure.vaults().listByResourceGroup(rgName)) {
                   Utils.print(vault);
                   jsonObj = new JSONObject();
-                  jsonObj.put("key-vault", vault.id() );
+                  jsonObj.put("keyvault-id", vault.id() );
+                  jsonObj.put("keyvault-name", vault.name() );
+                  jsonObj.put("resource-group-name", vault.resourceGroupName());
+                  jsonObj.put("region", vault.region() );
+                  jsonObj.put("keyvault-uri", vault.vaultUri() );
+
+                  JSONObject accessPolicyJsonObj = new JSONObject();
+                  for (AccessPolicy accessPolicy : vault.accessPolicies()) {
+                      accessPolicyJsonObj.put("access-policy", accessPolicy.objectId() );
+                      accessPolicyJsonObj.put("keys-permissions", Joiner.on(", ").join(accessPolicy.permissions().keys()) );
+                      accessPolicyJsonObj.put("secrets-policy", Joiner.on(", ").join(accessPolicy.permissions().secrets()) );
+                  }
+
+                  jsonObj.put("access-policies", accessPolicyJsonObj );
+
                   jsonArray.put ( jsonObj );
               }
 
@@ -76,7 +91,76 @@ public final class ManageKeyVault {
       return ret;
   }
 
+  private static Azure Authenticate(){
+    String fauth = "/Users/oleg.gorodnitchiibm.com/my.azureauth"; // System.getenv("AZURE_AUTH_LOCATION");
+    System.out.println("Reading auth file: " + fauth);
+    System.out.println("Env var AZURE_AUTH_LOCATION: " + System.getenv("AZURE_AUTH_LOCATION"));
+    final File credFile = new File(fauth);
 
+    Azure azure = Azure.configure()
+            .withLogLevel(LogLevel.BASIC)
+            .authenticate(credFile)
+            .withDefaultSubscription();
+
+    return azure;
+  }
+
+  // create the vault
+  public static String createKeyVault(String rg, String r) {
+    try {
+      //=============================================================
+      // Authenticate
+      Azure azure = Authenticate();
+      // Print selected subscription
+      System.out.println("Selected subscription: " + azure.subscriptionId() );
+
+        // Create a key vault with empty access policy
+        System.out.println("Creating a key vault...");
+        Vault vault1 = azure.vaults().define(vaultName1)
+                .withRegion(Region.US_EAST)
+                .withNewResourceGroup(rgName)
+                .withEmptyAccessPolicy()
+                .create();
+
+        System.out.println("Created key vault");
+        Utils.print(vault1);
+
+        // Authorize an application
+        System.out.println("Authorizing the application associated with the current service principal...");
+
+        vault1 = vault1.update()
+                .defineAccessPolicy()
+                    .forServicePrincipal(clientId)
+                    .allowKeyAllPermissions()
+                    .allowSecretPermissions(SecretPermissions.GET)
+                    .allowSecretPermissions(SecretPermissions.LIST)
+                    .attach()
+                .apply();
+
+        System.out.println("Updated key vault");
+        Utils.print(vault1);
+
+        // Update a key vault
+        System.out.println("Update a key vault to enable deployments and add permissions to the application...");
+
+        vault1 = vault1.update()
+                .withDeploymentEnabled()
+                .withTemplateDeploymentEnabled()
+                .updateAccessPolicy(vault1.accessPolicies().get(0).objectId())
+                    .allowSecretAllPermissions()
+                    .parent()
+                .apply();
+
+        System.out.println("Updated key vault");
+        // Print the network security group
+        Utils.print(vault1);
+
+      } catch (Exception e) {
+          System.err.println(e.getMessage());
+      }
+
+    return "";
+  }
 
   public static boolean runEtoE(Azure azure, String clientId) {
       final String vaultName1 = SdkContext.randomResourceName("vault1", 20);
