@@ -64,6 +64,10 @@ public final class ManageKeyVault {
     this.RegionName = region;
     addEvent("setRegion",region);
   }
+  public void setClientId(String id){
+    this.clientId = id;
+    addEvent("setClientId",id);
+  }
 
   //------------------------------------------------------------------------------------------
   // constructor
@@ -74,10 +78,11 @@ public final class ManageKeyVault {
     init();
     setResourceGroup(resourcegroup);
   }
-  public ManageKeyVault(String resourcegroup, String region) {
+  public ManageKeyVault(String resourcegroup, String region, String clientid) {
     init();
     setResourceGroup(resourcegroup);
     setRegion(region);
+    setClientId(clientid);
   }
 
   // authenticate
@@ -92,10 +97,112 @@ public final class ManageKeyVault {
             .withDefaultSubscription();
     addEvent("Selected subscriptionId", "value", azure.subscriptionId() );
 
-    clientId = ApplicationTokenCredentials.fromFile(credFile).clientId();
-    addEvent("Selected clientId", "value", clientId );
+    if (clientId == "" ){
+      clientId = ApplicationTokenCredentials.fromFile(credFile).clientId();
+      addEvent("Selected clientId", "value", clientId );
+    }
 
     return azure;
+  }
+
+  // create the vault
+  public static String createKeyVault(String resourcegroup, String rg, String kvname) {
+
+    Region r;
+    try{
+
+      if ( rg == null || rg.isEmpty() ) {
+        r = Region.US_EAST; // defaulting to US_EAST
+        addEvent("setRegion", "action", "setting to default US_EAST");
+      }else{
+        r = Region.fromName(rg);
+        addEvent("setRegion", "action", "setting to " + rg);
+      }
+    }catch(Exception e){
+      System.err.println(e.getMessage());
+      addEvent("error", e.getMessage());
+      //addEvent("error", "true");
+      return new JSONObject().put("error", e.getMessage()).toString();
+    }
+
+    try {
+      // Authenticate
+      Azure azure = Authenticate();
+      // Print selected subscription
+      System.out.println("Selected subscription: " + azure.subscriptionId() );
+
+        // Create a key vault with non-empty access policy
+        // and authorize an application
+        System.out.println("Creating a key vault...");
+        Vault vault1 = azure.vaults().define(kvname)
+                .withRegion(r)
+                .withNewResourceGroup(resourcegroup)
+                .defineAccessPolicy()
+                .forServicePrincipal( clientId )
+                .allowKeyPermissions( KeyPermissions.GET )
+                .allowKeyPermissions( KeyPermissions.LIST )
+                .allowSecretPermissions( SecretPermissions.GET )
+                .allowSecretPermissions( SecretPermissions.LIST )
+                .attach()
+                .create();
+
+        JSONObject json = new JSONObject();
+          json.put("name", vault1.name());
+          json.put("resource-group", vault1.resourceGroupName());
+          json.put("region", vault1.region());
+          json.put("vault-uri", vault1.vaultUri());
+        JSONArray accessPolicyJSON = new JSONArray();
+        for (AccessPolicy accessPolicy : vault1.accessPolicies()) {
+          JSONObject jsonAP = new JSONObject();
+            jsonAP.put("identity", accessPolicy.objectId());
+            jsonAP.put("key-permissions", Joiner.on(", ").join(accessPolicy.permissions().keys())  );
+            jsonAP.put("secret-permission", Joiner.on(", ").join(accessPolicy.permissions().secrets()) );
+            jsonAP.put("certs-permission", Joiner.on(", ").join(accessPolicy.permissions().certificates()) );
+            jsonAP.put("storage-permission", Joiner.on(", ").join(accessPolicy.permissions().storage()) );
+            accessPolicyJSON.put(jsonAP);
+        }
+        json.put("access-policy", accessPolicyJSON);
+        addEvent("createKeyVault", json );
+        System.out.println("Created key vault");
+        //Utils.print(vault1);
+/*
+        // Authorize an application
+        System.out.println("Authorizing the application associated with the current service principal...");
+        vault1 = vault1.update()
+                .defineAccessPolicy()
+                .forServicePrincipal( clientId )
+                .allowKeyPermissions( KeyPermissions.GET )
+                .allowKeyPermissions( KeyPermissions.LIST )
+                .allowSecretPermissions( SecretPermissions.GET )
+                .allowSecretPermissions( SecretPermissions.LIST )
+                .attach()
+                .apply();
+
+        addEvent("updateKeyVault", "update keyvault", kvname );
+        System.out.println("Updated key vault");
+        Utils.print(vault1);
+*/
+        // Update a key vault
+        System.out.println("Update a key vault to enable deployments and add permissions to the application...");
+        vault1 = vault1.update()
+                .withDeploymentEnabled()
+                .withTemplateDeploymentEnabled()
+                .updateAccessPolicy( vault1.accessPolicies().get(0).objectId() )
+                .allowSecretPermissions( SecretPermissions.GET )
+                .allowSecretPermissions( SecretPermissions.LIST )
+                .parent()
+                .apply();
+
+        addEvent("updateKeyVault", "update keyvault", kvname );
+        System.out.println("Updated key vault");
+        // Print the network security group
+        Utils.print(vault1);
+
+      } catch (Exception e) {
+          System.err.println(e.getMessage());
+      }
+
+    return "";
   }
 
   // List key vaults
@@ -150,105 +257,6 @@ public final class ManageKeyVault {
           e.printStackTrace();
     }
     return ret;
-  }
-
-  // create the vault
-  public static String createKeyVault(String resourcegroup, String rg, String kvname) {
-
-    Region r;
-    try{
-
-      if ( rg == null || rg.isEmpty() ) {
-        r = Region.US_EAST; // defaulting to US_EAST
-        addEvent("setRegion", "action", "setting to default US_EAST");
-      }else{
-        r = Region.fromName(rg);
-        addEvent("setRegion", "action", "setting to " + rg);
-      }
-    }catch(Exception e){
-      System.err.println(e.getMessage());
-      addEvent("error-msg", e.getMessage());
-      //addEvent("error", "true");
-      return new JSONObject().put("error", e.getMessage()).toString();
-    }
-
-    try {
-      // Authenticate
-      Azure azure = Authenticate();
-      // Print selected subscription
-      System.out.println("Selected subscription: " + azure.subscriptionId() );
-
-        // Create a key vault with non-empty access policy
-        // and authorize an application
-
-        System.out.println("Creating a key vault...");
-        Vault vault1 = azure.vaults().define(kvname)
-                .withRegion(r)
-                .withNewResourceGroup(resourcegroup)
-                .defineAccessPolicy()
-                .forServicePrincipal( clientId )
-                .allowKeyPermissions( KeyPermissions.GET )
-                .allowKeyPermissions( KeyPermissions.LIST )
-                .allowSecretPermissions( SecretPermissions.GET )
-                .allowSecretPermissions( SecretPermissions.LIST )
-                .attach()
-                .create();
-
-        JSONObject json = new JSONObject();
-          json.put("name", vault1.name());
-          json.put("resource-group", vault1.resourceGroupName());
-          json.put("region", vault1.region());
-          json.put("vault-uri", vault1.vaultUri());
-        JSONArray accessPolicyJSON = new JSONArray();
-        for (AccessPolicy accessPolicy : vault1.accessPolicies()) {
-          JSONObject jsonAP = new JSONObject();
-            jsonAP.put("identity", accessPolicy.objectId());
-            jsonAP.put("key-permissions", Joiner.on(", ").join(accessPolicy.permissions().keys())  );
-            jsonAP.put("secret-permission", Joiner.on(", ").join(accessPolicy.permissions().secrets()));
-            accessPolicyJSON.put(jsonAP);
-        }
-        json.put("access-policy", accessPolicyJSON);
-        addEvent("createKeyVault", json );
-        System.out.println("Created key vault");
-        //Utils.print(vault1);
-/*
-        // Authorize an application
-        System.out.println("Authorizing the application associated with the current service principal...");
-        vault1 = vault1.update()
-                .defineAccessPolicy()
-                .forServicePrincipal( clientId )
-                .allowKeyPermissions( KeyPermissions.GET )
-                .allowKeyPermissions( KeyPermissions.LIST )
-                .allowSecretPermissions( SecretPermissions.GET )
-                .allowSecretPermissions( SecretPermissions.LIST )
-                .attach()
-                .apply();
-
-        addEvent("updateKeyVault", "update keyvault", kvname );
-        System.out.println("Updated key vault");
-        Utils.print(vault1);
-*/
-        // Update a key vault
-        System.out.println("Update a key vault to enable deployments and add permissions to the application...");
-        vault1 = vault1.update()
-                .withDeploymentEnabled()
-                .withTemplateDeploymentEnabled()
-                .updateAccessPolicy( vault1.accessPolicies().get(0).objectId() )
-                .allowSecretPermissions( SecretPermissions.GET )
-                .allowSecretPermissions( SecretPermissions.LIST )
-                .parent()
-                .apply();
-
-        addEvent("updateKeyVault", "update keyvault", kvname );
-        System.out.println("Updated key vault");
-        // Print the network security group
-        Utils.print(vault1);
-
-      } catch (Exception e) {
-          System.err.println(e.getMessage());
-      }
-
-    return "";
   }
 
   /*
