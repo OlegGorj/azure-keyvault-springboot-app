@@ -36,23 +36,23 @@ public class Controller {
 			produces = "application/json")
 	public String createKV(@RequestBody String payload) {
 
-		System.out.println(payload);
+		//System.out.println(payload);
+		String resourcegroup, region, appcode, clientid;
+		try {
+			resourcegroup = JsonPath.read(payload, "$.resource-group");
+			region = JsonPath.read(payload, "$.region");
+			appcode = JsonPath.read(payload, "$.app-code");
+			clientid = JsonPath.read(payload, "$.client-id");
+		}catch(Exception e){
+			return String.format( "[\"error\": \"Incorrect request body: %s\"]", e.getMessage() );
+		}
 
 		try {
-
-			String resourcegroup = JsonPath.read(payload, "$.resource-group");
-			if ( resourcegroup == null || resourcegroup.isEmpty() ) {
-				return String.format("json format error. missing resource group");
-			}
-
-			String region = JsonPath.read(payload, "$.region");
-			String kvName = JsonPath.read(payload, "$.app-code") + "-keyvault";
+			String kvName = appcode + "-keyvault";
 
 			System.out.println(">> Attemting to creater keyvault as part of resourcegroup: " + resourcegroup);
-			ManageKeyVault kv = new ManageKeyVault(resourcegroup);
+			ManageKeyVault kv = new ManageKeyVault(resourcegroup, region, clientid);
 			String r = kv.createKeyVault(resourcegroup, region, kvName);
-
-			//System.out.println(">> events are: \n" + kv.getEvents() );
 
 			return kv.getEvents() ;
 
