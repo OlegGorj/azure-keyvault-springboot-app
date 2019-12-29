@@ -11,37 +11,44 @@ import com.microsoft.azure.management.resources.fluentcore.utils.SdkContext;
 import com.microsoft.rest.LogLevel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
-//import com.microsoft.azure.shortcuts.resources.Region;
 import java.sql.Timestamp;
 import java.util.Date;
 import org.json.*;
 import java.io.File;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.org.cloud.api.core.utils.KubernetisClientUtil;
 import com.org.cloud.api.core.utils.Utils;
 
-public final class ManageKeyVault {
+public class ManageKeyVault {
 
-  private static String ResourceGroupName = "";     // resource group name
-  private static String RegionName = "";            // region name
-  private static String clientId = "";              // service principal
-  private static Azure azure;
-  private static JSONArray eventsJsonArr = new JSONArray();
+  Logger logger = LoggerFactory.getLogger(ManageKeyVault.class);
 
+  private  String ResourceGroupName = "";     // resource group name
+  private  String RegionName = "";            // region name
 
+  @Value("${azure.keyvault.client-id:''}")
+  private String clientId;              // service principal
+
+  private  Azure azure;
+  private  JSONArray eventsJsonArr = new JSONArray();
+
+  //------------------------------------------------------------------------------------------
   private void init(){
-    System.out.println("Env var AZURE_AUTH_LOCATION: " + System.getenv("AZURE_AUTH_LOCATION"));
+    logger.info("Env var AZURE_AUTH_LOCATION: " + System.getenv("AZURE_AUTH_LOCATION"));
     this.eventsJsonArr.put( new JSONObject().put("error", "false") );
     addEvent("error", "false");
   }
   //------------------------------------------------------------------------------------------
-  public String getEvents(){
+  public String toString(){
     return eventsJsonArr != null ? eventsJsonArr.toString() : "[]";
   }
-  private static void addEvent(String root, String val){
+  private  void addEvent(String root, String val){
     addEvent(root, "value", val);
   }
-  private static void addEvent(String root, String key, String val){
+  private  void addEvent(String root, String key, String val){
     long time = new Date().getTime();
     //JSONObject jobj = new JSONObject();
     JSONObject jts = new JSONObject().put("timestamp", new Timestamp(time));
@@ -49,7 +56,7 @@ public final class ManageKeyVault {
     //jobj.put( root, jts.put( key, val) );
     eventsJsonArr.put( new JSONObject().put( root, jts.put( key, val) )  );
   }
-  private static void addEvent(String root, JSONObject val){
+  private  void addEvent(String root, JSONObject val){
     long time = new Date().getTime();
     val.put("timestamp", new Timestamp(time));
     eventsJsonArr.put( new JSONObject().put( root, val ) );
@@ -58,15 +65,15 @@ public final class ManageKeyVault {
   //------------------------------------------------------------------------------------------
   public void setResourceGroup(String resGroup){
     this.ResourceGroupName = resGroup;
-    addEvent("setResourceGroup",resGroup);
+    addEvent("set-resourcegroup",resGroup);
   }
   public void setRegion(String region){
     this.RegionName = region;
-    addEvent("setRegion",region);
+    addEvent("set-region",region);
   }
   public void setClientId(String id){
     this.clientId = id;
-    addEvent("setClientId",id);
+    addEvent("set-clientid",id);
   }
 
   //------------------------------------------------------------------------------------------
@@ -86,27 +93,28 @@ public final class ManageKeyVault {
   }
 
   // authenticate
-  private static Azure Authenticate() throws Exception {
+  private  Azure Authenticate() throws Exception {
     String fauth = "/Users/oleg.gorodnitchiibm.com/my.azureauth";
-    System.out.println("Reading auth file: " + fauth);
+    //logger.info("Reading auth file: " + fauth);
+    logger.debug("Reading auth file: " + fauth);
     final File credFile = new File(fauth);
 
     azure = Azure.configure()
             .withLogLevel(LogLevel.BASIC)
             .authenticate(credFile)
             .withDefaultSubscription();
-    addEvent("Selected subscriptionId", "value", azure.subscriptionId() );
+    addEvent("selected-subscriptionId", "value", azure.subscriptionId() );
 
     if (clientId == "" ){
       clientId = ApplicationTokenCredentials.fromFile(credFile).clientId();
-      addEvent("Selected clientId", "value", clientId );
     }
+    addEvent("selected-clientId", "value", clientId );
 
     return azure;
   }
 
   // create the vault
-  public static String createKeyVault(String resourcegroup, String rg, String kvname) {
+  public  String createKeyVault(String resourcegroup, String rg, String kvname) {
 
     Region r;
     try{
@@ -120,20 +128,16 @@ public final class ManageKeyVault {
       }
     }catch(Exception e){
       System.err.println(e.getMessage());
-      addEvent("error", e.getMessage());
-      //addEvent("error", "true");
+      addEvent("error", e.getMessage());  //addEvent("error", "true");
       return new JSONObject().put("error", e.getMessage()).toString();
     }
 
     try {
       // Authenticate
-      Azure azure = Authenticate();
-      // Print selected subscription
-      System.out.println("Selected subscription: " + azure.subscriptionId() );
-
+      Azure azure = Authenticate(); // TODO move to init
         // Create a key vault with non-empty access policy
         // and authorize an application
-        System.out.println("Creating a key vault...");
+        logger.info("Creating a key vault...");
         Vault vault1 = azure.vaults().define(kvname)
                 .withRegion(r)
                 .withNewResourceGroup(resourcegroup)
@@ -163,11 +167,11 @@ public final class ManageKeyVault {
         }
         json.put("access-policy", accessPolicyJSON);
         addEvent("createKeyVault", json );
-        System.out.println("Created key vault");
+        logger.info("Created key vault");
         //Utils.print(vault1);
 /*
         // Authorize an application
-        System.out.println("Authorizing the application associated with the current service principal...");
+        logger.info("Authorizing the application associated with the current service principal...");
         vault1 = vault1.update()
                 .defineAccessPolicy()
                 .forServicePrincipal( clientId )
@@ -179,11 +183,11 @@ public final class ManageKeyVault {
                 .apply();
 
         addEvent("updateKeyVault", "update keyvault", kvname );
-        System.out.println("Updated key vault");
+        logger.info("Updated key vault");
         Utils.print(vault1);
 */
         // Update a key vault
-        System.out.println("Update a key vault to enable deployments and add permissions to the application...");
+        logger.info("Update a key vault to enable deployments and add permissions to the application...");
         vault1 = vault1.update()
                 .withDeploymentEnabled()
                 .withTemplateDeploymentEnabled()
@@ -194,7 +198,7 @@ public final class ManageKeyVault {
                 .apply();
 
         addEvent("updateKeyVault", "update keyvault", kvname );
-        System.out.println("Updated key vault");
+        logger.info("Updated key vault");
         // Print the network security group
         Utils.print(vault1);
 
@@ -206,19 +210,19 @@ public final class ManageKeyVault {
   }
 
   // List key vaults
-  public static String listKeyVaults() {
+  public  String listKeyVaults() {
     String ret = "";
     try {
           // Authenticate
           Azure azure = Authenticate();
           // Print selected subscription
-          System.out.println("Selected subscription: " + azure.subscriptionId() );
+          logger.info("Selected subscription: " + azure.subscriptionId() );
 
           JSONArray jsonArray = new JSONArray();
           JSONObject jsonObj = new JSONObject();
 
           try {
-              System.out.println("Listing key vaults...");
+              logger.info("Listing key vaults...");
 
               for (Vault vault : azure.vaults().listByResourceGroup( ResourceGroupName )) {
                   Utils.print(vault);
@@ -241,7 +245,7 @@ public final class ManageKeyVault {
                   jsonArray.put ( jsonObj );
               }
 
-              System.out.println("Lising vaults: " + jsonArray );
+              logger.info("Lising vaults: " + jsonArray );
 
           } catch (Exception e) {
               System.err.println(e.getMessage());
@@ -253,32 +257,32 @@ public final class ManageKeyVault {
 
     } catch (Exception e) {
           ret =  e.getMessage();
-          System.out.println(e.getMessage());
+          logger.info(e.getMessage());
           e.printStackTrace();
     }
     return ret;
   }
 
   /*
-  public static boolean runEtoE(Azure azure, String clientId) {
+  public  boolean runEtoE(Azure azure, String clientId) {
       final String vaultName1 = SdkContext.randomResourceName("vault1", 20);
       //final String vaultName2 = SdkContext.randomResourceName("vault2", 20);
       final String  ResourceGroupName  = SdkContext.randomResourceName("rgNEMV", 24);
 
       try {
           // Create a key vault with empty access policy
-          System.out.println("Creating a key vault...");
+          logger.info("Creating a key vault...");
           Vault vault1 = azure.vaults().define(vaultName1)
                   .withRegion(Region.US_EAST)
                   .withNewResourceGroup( ResourceGroupName )
                   .withEmptyAccessPolicy()
                   .create();
 
-          System.out.println("Created key vault");
+          logger.info("Created key vault");
           Utils.print(vault1);
 
           // Authorize an application
-          System.out.println("Authorizing the application associated with the current service principal...");
+          logger.info("Authorizing the application associated with the current service principal...");
 
           vault1 = vault1.update()
                   .defineAccessPolicy()
@@ -289,11 +293,11 @@ public final class ManageKeyVault {
                       .attach()
                   .apply();
 
-          System.out.println("Updated key vault");
+          logger.info("Updated key vault");
           Utils.print(vault1);
 
           // Update a key vault
-          System.out.println("Update a key vault to enable deployments and add permissions to the application...");
+          logger.info("Update a key vault to enable deployments and add permissions to the application...");
 
           vault1 = vault1.update()
                   .withDeploymentEnabled()
@@ -303,21 +307,21 @@ public final class ManageKeyVault {
                       .parent()
                   .apply();
 
-          System.out.println("Updated key vault");
+          logger.info("Updated key vault");
           // Print the network security group
           Utils.print(vault1);
 
           // List key vaults
-          System.out.println("Listing key vaults...");
+          logger.info("Listing key vaults...");
 
           for (Vault vault : azure.vaults().listByResourceGroup( ResourceGroupName )) {
               Utils.print(vault);
           }
 
           // Delete key vaults
-          System.out.println("Deleting the key vaults");
+          logger.info("Deleting the key vaults");
           azure.vaults().deleteById(vault1.id());
-          System.out.println("Deleted the key vaults");
+          logger.info("Deleted the key vaults");
 
           return true;
 
@@ -325,11 +329,11 @@ public final class ManageKeyVault {
           System.err.println(e.getMessage());
       } finally {
           try {
-              System.out.println("Deleting Resource Group: " +  ResourceGroupName );
+              logger.info("Deleting Resource Group: " +  ResourceGroupName );
               azure.resourceGroups().deleteByName( ResourceGroupName );
-              System.out.println("Deleted Resource Group: " +  ResourceGroupName );
+              logger.info("Deleted Resource Group: " +  ResourceGroupName );
           } catch (NullPointerException npe) {
-              System.out.println("Did not create any resources in Azure. No clean up is necessary");
+              logger.info("Did not create any resources in Azure. No clean up is necessary");
           } catch (Exception g) {
               g.printStackTrace();
           }
@@ -338,13 +342,13 @@ public final class ManageKeyVault {
       return false;
   }
 
-  public static void main() {
+  public  void main() {
       try {
 
           //=============================================================
           // Authenticate
           String fauth = "/Users/oleg.gorodnitchiibm.com/my.azureauth"; // System.getenv("AZURE_AUTH_LOCATION");
-          System.out.println("Reading auth file: " + fauth);
+          logger.info("Reading auth file: " + fauth);
 
           final File credFile = new File(fauth);
 
@@ -354,12 +358,12 @@ public final class ManageKeyVault {
                   .withDefaultSubscription();
 
           // Print selected subscription
-          System.out.println("Selected subscription: " + azure.subscriptionId());
+          logger.info("Selected subscription: " + azure.subscriptionId());
 
           runEtoE(azure, ApplicationTokenCredentials.fromFile(credFile).clientId());
 
       } catch (Exception e) {
-          System.out.println(e.getMessage());
+          logger.info(e.getMessage());
           e.printStackTrace();
       }
   }
