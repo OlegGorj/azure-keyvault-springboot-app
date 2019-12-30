@@ -63,20 +63,6 @@ public class ManageKeyVault {
   }
 
   //------------------------------------------------------------------------------------------
-  public void setResourceGroup(String resGroup){
-    this.ResourceGroupName = resGroup;
-    addEvent("set-resourcegroup",resGroup);
-  }
-  public void setRegion(String region){
-    this.RegionName = region;
-    addEvent("set-region",region);
-  }
-  public void setClientId(String id){
-    this.clientId = id;
-    addEvent("set-clientid",id);
-  }
-
-  //------------------------------------------------------------------------------------------
   // constructor
   public ManageKeyVault() {
     init();
@@ -368,5 +354,19 @@ public class ManageKeyVault {
       }
   }
   */
+
+  //------------------------------------------------------------------------------------------
+  public void setResourceGroup(String resGroup){
+    this.ResourceGroupName = resGroup;
+    addEvent("set-resourcegroup",resGroup);
+  }
+  public void setRegion(String region){
+    this.RegionName = region;
+    addEvent("set-region",region);
+  }
+  public void setClientId(String id){
+    this.clientId = id;
+    addEvent("set-clientid",id);
+  }
 
 }
