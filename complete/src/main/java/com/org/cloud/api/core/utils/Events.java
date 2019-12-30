@@ -12,21 +12,22 @@ public class Events {
   private  JSONArray eventsJsonArr = new JSONArray();
 
   //------------------------------------------------------------------------------------------
-  public String toString(){
+  public Events() throws JSONException {
+    //this.eventsJsonArr.put( new JSONObject().put("error", "false") );
+  }
+
+  public String toString() {
     return eventsJsonArr != null ? eventsJsonArr.toString() : "[]";
   }
-  private  void addEvent(String root, String val){
+  public  void addEvent(String root, String val) throws JSONException {
     addEvent(root, "value", val);
   }
-  private  void addEvent(String root, String key, String val){
+  public  void addEvent(String root, String key, String val) throws JSONException {
     long time = new Date().getTime();
-    //JSONObject jobj = new JSONObject();
     JSONObject jts = new JSONObject().put("timestamp", new Timestamp(time));
-    //jts.put( key, val);
-    //jobj.put( root, jts.put( key, val) );
     eventsJsonArr.put( new JSONObject().put( root, jts.put( key, val) )  );
   }
-  private  void addEvent(String root, JSONObject val){
+  public  void addEvent(String root, JSONObject val) throws JSONException {
     long time = new Date().getTime();
     val.put("timestamp", new Timestamp(time));
     eventsJsonArr.put( new JSONObject().put( root, val ) );

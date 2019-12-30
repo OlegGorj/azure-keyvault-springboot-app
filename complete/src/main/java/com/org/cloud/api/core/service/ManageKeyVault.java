@@ -8,6 +8,7 @@ import com.microsoft.azure.management.keyvault.Vault;
 import com.microsoft.azure.management.keyvault.AccessPolicy;
 import com.microsoft.azure.management.resources.fluentcore.arm.Region;
 import com.microsoft.azure.management.resources.fluentcore.utils.SdkContext;
+import com.microsoft.rest.interceptors.LoggingInterceptor;
 import com.microsoft.rest.LogLevel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
@@ -18,6 +19,11 @@ import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+
+import com.microsoft.azure.AzureEnvironment;
+import com.microsoft.azure.credentials.AppServiceMSICredentials;
+import com.microsoft.azure.keyvault.KeyVaultClient;
+import com.microsoft.azure.keyvault.models.KeyBundle;
 
 import com.org.cloud.api.core.utils.KubernetisClientUtil;
 import com.org.cloud.api.core.utils.Utils;
@@ -42,7 +48,7 @@ public class ManageKeyVault {
   //------------------------------------------------------------------------------------------
   // authenticate
   private  Azure Authenticate() throws Exception {
-    String fauth = "/Users/user/my.azureauth";
+    String fauth = "azureauth";
     logger.debug("Reading auth file: " + fauth);
     final File credFile = new File(fauth);
 
@@ -60,14 +66,6 @@ public class ManageKeyVault {
 
   // init function
   private void init() {
-    logger.info("Env var AZURE_AUTH_LOCATION: " + System.getenv("AZURE_AUTH_LOCATION"));
-    try {
-      // Authenticate
-      this.azure = Authenticate();
-    }catch(Exception e){
-      logger.error(e.getMessage());
-
-    }
   }
   //------------------------------------------------------------------------------------------
   // constructor
@@ -87,7 +85,14 @@ public class ManageKeyVault {
   //------------------------------------------------------------------------------------------
   // create the vault
   public  String createKeyVault(String resourcegroup, String rg, String kvname) {
-
+    try {
+      // Authenticate
+      this.azure = Authenticate();
+    }catch(Exception e){
+      System.err.println(e.getMessage());
+      events.addEvent("error", "message", e.getMessage());
+      return events.toString();
+    }
     try {
         /*
         * Create a key vault with non-empty access policy
@@ -125,7 +130,7 @@ public class ManageKeyVault {
             accessPolicyJSON.put(jsonAP);
         }
         json.put("access-policy", accessPolicyJSON);
-        events.addEvent("createKeyVault", json );
+        events.addEvent("create-keyvault", json );
         /*
         * update keyvault config to enable deployments
         */
@@ -140,14 +145,14 @@ public class ManageKeyVault {
                 .parent()
                 .apply();
 
-        events.addEvent("updateKeyVault", "update keyvault", kvname );
+        events.addEvent("update-keyvault", "update keyvault", kvname );
         logger.info("Updated key vault : " + kvname);
         Utils.print(vault1);
+
 
       } catch (Exception e) {
         System.err.println(e.getMessage());
         events.addEvent("error", "message", e.getMessage());
-        //return String.format( "[{\"error\": \"%s\"}]", e.getMessage() );
         return events.toString();
       }
 
@@ -177,16 +182,13 @@ public class ManageKeyVault {
                   jsonObj.put("resource-group-name", vault.resourceGroupName());
                   jsonObj.put("region", vault.region() );
                   jsonObj.put("keyvault-uri", vault.vaultUri() );
-
                   JSONObject accessPolicyJsonObj = new JSONObject();
                   for (AccessPolicy accessPolicy : vault.accessPolicies()) {
                       accessPolicyJsonObj.put("access-policy", accessPolicy.objectId() );
                       accessPolicyJsonObj.put("keys-permissions", Joiner.on(", ").join(accessPolicy.permissions().keys()) );
                       accessPolicyJsonObj.put("secrets-policy", Joiner.on(", ").join(accessPolicy.permissions().secrets()) );
                   }
-
                   jsonObj.put("access-policies", accessPolicyJsonObj );
-
                   jsonArray.put ( jsonObj );
               }
 
