@@ -80,7 +80,7 @@ public class ManageKeyVault {
 
   // authenticate
   private  Azure Authenticate() throws Exception {
-    String fauth = "/Users/oleg.gorodnitchiibm.com/my.azureauth";
+    String fauth = "/Users/user/my.azureauth";
     //logger.info("Reading auth file: " + fauth);
     logger.debug("Reading auth file: " + fauth);
     final File credFile = new File(fauth);
